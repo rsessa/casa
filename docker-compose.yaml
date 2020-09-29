@@ -1,0 +1,150 @@
+version: '3'
+
+services:
+  portainer-server:
+    container_name: portainer-server
+    image: portainer/portainer-ce:2.0.0-alpine
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /volume1/docker/portainer:/data
+      
+  nginx-proxy:
+    container_name: nginx-proxy
+    image: jwilder/nginx-proxy
+    restart: always
+    ports:
+      - "88:80"
+      - "444:443"
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - certs:/etc/nginx/certs:ro
+      - confd:/etc/nginx/conf.d
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+    labels:
+      - com.github.jrcs.letsencrypt_nginx_proxy_companion.nginx_proxy
+      
+  duckdns:
+    image: linuxserver/duckdns
+    container_name: duckdns
+    env_file: .duckdns.env
+    environment:
+      - TZ=Europe/Madrid
+      - LOG_FILE=false #optional
+    volumes:
+      - /volume1/docker/duckdns/config:/config
+    restart: always
+      
+  watchtower:
+    container_name: watchtower
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      
+  pihole:
+    container_name: pihole
+    image: pihole/pihole:latest
+    env_file: .pihole.env
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "67:67/udp"
+      - "1010:80/tcp"
+      - "4443:443/tcp"
+    environment:
+      - TZ=Europa/Madrid
+    # Volumes store your data between container upgrades
+    volumes:
+       - '/volume1/docker/pihole/:/etc/pihole/'
+       - '/volume1/docker/pihole/dns/:/etc/dnsmasq.d/'
+    dns:
+      - 127.0.0.1
+      - 1.1.1.1
+    # Recommended but not required (DHCP needs NET_ADMIN)
+    #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+    cap_add:
+      - NET_ADMIN
+    restart: always
+    
+
+  letsencrypt:
+    container_name: letsencrypt
+    image: jrcs/letsencrypt-nginx-proxy-companion
+    restart: always
+    environment:
+      - NGINX_PROXY_CONTAINER=nginx-proxy
+      - DEFAULT_EMAIL=rsessa1@gmail.com
+    volumes:
+      - certs:/etc/nginx/certs:rw
+      - confd:/etc/nginx/conf.d
+      - vhostd:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+  home-assistant:
+    image: homeassistant/home-assistant:stable
+    container_name: home-assistant
+    restart: always
+    ports:
+      - "8123:8123"
+    expose:
+      - "8123"
+    volumes:
+      - /volume1/docker/homeassistant:/config
+    env_file: .homeassistant.env
+    environment:
+      - VIRTUAL_HOST=casa.papanerd.live
+      - LETSENCRYPT_HOST=casa.papanerd.live
+      - LETSENCRYPT_EMAIL=rsessa1@gmail.com
+      
+  mosquito:
+    image: eclipse-mosquitto:latest
+    container_name: mosquitto
+    restart: always
+    ports:
+      - "1883:1883"
+    volumes:
+      - /volume1/docker/mosquitoMQTT:/mosquitto"
+      - /volume1/docker/mosquitoMQTT/data:/mosquitto/data
+      - /volume1/docker/mosquitoMQTT/log:/mosquitto/log
+      - /volume1/docker/mosquitoMQTT/config:/mosquitto/config
+    environment:
+      - TZ=Europe/Madrid
+    
+  db:
+    image: mysql:5.7
+    container_name: db-wordpress
+    volumes:
+      - /volume1/docker/db:/var/lib/mysql
+    restart: always
+    env_file: .db.env
+    environment:
+    - NETWORK_ACCESS=internal
+  wordpress:
+    depends_on:
+      - db
+    image: wordpress:latest
+    container_name: blog
+    ports:
+      - "8000:80"
+    expose:
+      - "80"
+    restart: always
+    volumes:
+      - /volume1/docker/wordpress:/var/www/html
+    env_file: .wordpress.env
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      VIRTUAL_HOST: blog.papanerd.live
+      LETSENCRYPT_HOST: blog.papanerd.live
+      LETSENCRYPT_EMAIL: rsessa1@gmail.com
+  
+volumes:
+  certs:
+  html:
+  vhostd:
+  confd:
